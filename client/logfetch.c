@@ -248,7 +248,7 @@ char *logdata(char *filename, logdef_t *logdef)
 		if (logdef->triggercount) {
 			int i, match = 0;
 
-			for (i=0; ((i < logdef->ignorecount) && !match); i++) {
+			for (i=0; ((i < logdef->triggercount) && !match); i++) {
 				match = (regexec(&trigexpr[i], fillpos, 0, NULL, 0) == 0);
 			}
 
@@ -305,19 +305,19 @@ char *logdata(char *filename, logdef_t *logdef)
 			 * then skip until it will fit.
 			 */
 			if (bytesread > logdef->maxbytes) {
-				size_t bytesleft;
+				size_t triggerbytesleft;
 
-				bytesleft = logdef->maxbytes - (triggerendpos - startpos);
-				if (bytesleft > 0) {
+				triggerbytesleft = bytesread - (triggerendpos - startpos);
+				if (triggerbytesleft > 0) {
 					char *skipend;
 
-					skipend = fillpos - bytesleft;
-					memmove(triggerendpos, skipend, bytesleft);
-					*(triggerendpos + bytesleft) = '\0';
+					skipend = fillpos - triggerbytesleft;
+					memmove(triggerendpos, skipend, triggerbytesleft);
+					*(triggerendpos + triggerbytesleft) = '\0';
 
-					if (bytesleft >= strlen(skiptxt)) 
+					if (triggerbytesleft >= strlen(skiptxt)) 
 						memcpy(triggerendpos, skiptxt, strlen(skiptxt));
-					bytesread = (triggerendpos - startpos) + bytesleft;
+					bytesread = (triggerendpos - startpos) + triggerbytesleft;
 				}
 			}
 		}
@@ -927,7 +927,12 @@ int main(int argc, char *argv[])
 #endif
 
 	for (i=1; (i<argc); i++) {
-		if (strcmp(argv[i], "--clock") == 0) {
+		if (strcmp(argv[i], "--debug") == 0) {
+			char *delim = strchr(argv[i], '=');
+			debug = 1;
+			if (delim) set_debugfile(delim+1, 0);
+		}
+		else if (strcmp(argv[i], "--clock") == 0) {
 			struct timeval tv;
 			struct timezone tz;
 			struct tm *tm;
@@ -950,11 +955,21 @@ int main(int argc, char *argv[])
 			printf("%s\n", timestr);
 			return 0;
 		}
-		else if (i == 1) cfgfn = argv[i];
-		else if (i == 2) statfn = argv[i];
+		else if ((*(argv[i]) == '-') && (strlen(argv[i]) > 1)) {
+			fprintf(stderr, "Unknown option %s\n", argv[i]);
+		}
+		else {
+			/* Not an option -- should have two arguments left: our config and status file */
+			if (cfgfn == NULL) cfgfn = argv[i];
+			else if (statfn == NULL) statfn = argv[i];
+			else fprintf(stderr, "Unknown argument '%s'\n", argv[i]);
+		}
 	}
 
-	if ((cfgfn == NULL) || (statfn == NULL)) return 1;
+	if ((cfgfn == NULL) || (statfn == NULL)) {
+		fprintf(stderr, "Missing config or status file arguments\n");
+		return 1;
+	}
 
 	if (loadconfig(cfgfn) != 0) return 1;
 	loadlogstatus(statfn);
