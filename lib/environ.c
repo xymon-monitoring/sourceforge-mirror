@@ -99,8 +99,13 @@ const static struct {
 	{ "IPTEST_2_CLEAR_ON_FAILED_CONN", "TRUE" },
 	{ "NONETPAGE", "" },
 	{ "FPING", "xymonping" },
+	{ "FPINGOPTS", "-Ae" },
+	{ "SNTP", "sntp" },
+	{ "SNTPOPTS", "-u" },
 	{ "NTPDATE", "ntpdate" },
+	{ "NTPDATEOPTS", "-u -q -p 1" },
 	{ "TRACEROUTE", "traceroute" },
+	{ "TRACEROUTEOPTS", "-n -q 2 -w 2 -m 15" },
 	{ "RPCINFO", "rpcinfo" },
 	{ "XYMONROUTERTEXT", "router" },
 	{ "NETFAILTEXT", "not OK" },
@@ -151,6 +156,7 @@ const static struct {
 	{ "XYMONALLOKTEXT", "<FONT SIZE=+2 FACE=\"Arial, Helvetica\"><BR><BR><I>All Monitored Systems OK</I></FONT><BR><BR>" },
 	{ "HOSTPOPUP", "CDI" },
 	{ "STATUSLIFETIME", "30" },
+	{ "ACK_COOKIE_EXPIRATION", "86400" },
 	{ NULL, NULL }
 };
 
@@ -312,12 +318,12 @@ char *getenv_default(char *envname, char *envdefault, char **buf)
 {
 	static char *val;
 
-	val = getenv(envname);	/* Dont use xgetenv() here! */
+	val = getenv(envname);	/* Don't use xgetenv() here! */
 	if (!val) {
 		val = (char *)malloc(strlen(envname) + strlen(envdefault) + 2);
 		sprintf(val, "%s=%s", envname, envdefault);
 		putenv(val);
-		/* Dont free the string - it must be kept for the environment to work */
+		/* Don't free the string - it must be kept for the environment to work */
 		val = xgetenv(envname);	/* OK to use xgetenv here */
 	}
 

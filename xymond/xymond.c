@@ -60,7 +60,7 @@ static char rcsid[] = "$Id$";
 #define DISABLED_UNTIL_OK -1
 
 /*
- * The absolute maximum size we'll grow our buffers to accomodate an incoming message.
+ * The absolute maximum size we'll grow our buffers to accommodate an incoming message.
  * This is really just an upper bound to squash the bad guys trying to data-flood us. 
  */
 #define MAX_XYMON_INBUFSZ (10*1024*1024)	/* 10 MB */
@@ -192,6 +192,7 @@ int      clientsavedisk = 0;	/* On disk via the CLICHG channel */
 int      allow_downloads = 1;
 int	 defaultvalidity = 30;	/* Minutes */
 int	 ackeachcolor = 0;
+int	 defaultcookietime = 86400;	/* 1 day */
 
 #define NOTALK 0
 #define RECEIVING 1
@@ -1112,13 +1113,44 @@ xymond_log_t *find_log(hostfilter_rec_t *filter, xymond_hostlist_t **host)
 	return lwalk;
 }
 
+int accept_test(void *hrec, char *testname)
+{
+	char *accept = xmh_item(hrec, XMH_ACCEPT_ONLY);
+	char *p, *endp;
+
+	if (!accept || !testname || !(*testname)) return 1;
+
+	p = strstr(accept, testname);
+	if (p) {
+	    int testlength = strlen(testname);
+
+	    while (p) {
+		/*
+		 * p points to where the testname is in the accept string. Must check that it
+		 * points to a full word.
+		 *
+		 * Check :
+		 * - if p points at (beginning of accept string, or there is a ',' right before p) AND
+		 * - (p+strlen(testname) hits end of accept string, or it hits a ',')
+		 */
+		endp = p + testlength;
+		if (((*endp == '\0') || (*endp == ',')) && ((p == accept) || (*(p-1) == ','))) return 1;
+		/* no match, keep looking */
+		p = strstr(endp, testname);
+	    }
+	}
+
+	return 0;
+}
+
+
 void get_hts(char *msg, char *sender, char *origin,
 	     xymond_hostlist_t **host, testinfo_t **test, char **grouplist, xymond_log_t **log, 
 	     int *color, char **downcause, int *alltests, int createhost, int createlog)
 {
 	/*
 	 * This routine takes care of finding existing status log records, or
-	 * (if they dont exist) creating new ones for an incoming status.
+	 * (if they don't exist) creating new ones for an incoming status.
 	 *
 	 * "msg" contains an incoming message. First list is of the form "KEYWORD host,domain.test COLOR"
 	 */
@@ -1167,7 +1199,7 @@ void get_hts(char *msg, char *sender, char *origin,
 	colstr = strtok(NULL, " \t"); /* ... and the color (if any) */
 	if (colstr) {
 		*color = parse_color(colstr);
-		/* Dont create log-entries if we get a bad color spec. */
+		/* Don't create log-entries if we get a bad color spec. */
 		if (*color == -1) createlog = 0;
 	}
 	else createlog = 0;
@@ -1338,6 +1370,32 @@ static int changedelay(void *hinfo, int newcolor, char *testname, int currcolor)
 	return result;
 }
 
+static int isset_noflap(void *hinfo, char *testname, char *hostname)
+{
+	char *tok, *dstr;
+	int keylen;
+
+	dstr = xmh_item(hinfo, XMH_NOFLAP);
+	if (!dstr) return 0; /* no 'noflap' set */
+
+	/* Check bare noflap (disable for host) vs "noflap=test1,test2" */
+	/* A bare noflap will be set equal to the key itself (usually NOFLAP) like a flag */
+	if (strcmp(dstr, "NOFLAP") == 0) return 1;
+
+	/* if not 'NOFLAP', we should receive "=test1,test2". Skip the = */
+	if (*dstr == '=') dstr++;
+	
+	keylen = strlen(testname);
+	tok = strtok(dstr, ",");
+	while (tok && (strncmp(testname, tok, keylen) != 0)) tok = strtok(NULL, ",");
+	if (!tok) return 0; /* specifies noflap, but this test is not in the list */
+
+	/* do not use flapping for the test */
+	dbgprintf("Ignoring flapping for %s:%s due to noflap set.\n", hostname, testname);
+
+	return 1;
+}
+
 void handle_status(unsigned char *msg, char *sender, char *hostname, char *testname, char *grouplist, 
 		   xymond_log_t *log, int newcolor, char *downcause, int modifyonly)
 {
@@ -1368,6 +1426,16 @@ void handle_status(unsigned char *msg, char *sender, char *hostname, char *testn
 		return;
 	}
 
+	/* XXX: TODO: Needs revisiting; get_hts() has already run, so
+	 * 	we're leaving test record debris around */
+	/* Check if disallowed, but let internally-generated messages through */
+	/* Otherwise existing tests never go purple */
+	// if ((strcmp(sender, "xymond") != 0) && !accept_test(hinfo, testname)) {
+	//	dbgprintf("Rejected status message for %s.%s sent from %s\n", 
+	//		  textornull(hostname), textornull(testname), textornull(sender));
+	//	return;
+	// }
+
 	issummary = (log->host->hosttype == H_SUMMARY);
 
 	if (strncmp(msg, "status+", 7) == 0) {
@@ -1377,7 +1445,7 @@ void handle_status(unsigned char *msg, char *sender, char *hostname, char *testn
 	if (!modifyonly && log->modifiers) {
 		/*
 		 * Original status message - check if there is an active modifier for the color.
-		 * We dont do this for status changes triggered by a "modify" command.
+		 * We don't do this for status changes triggered by a "modify" command.
 		 */
 		modifier_t *mwalk;
 		modifier_t *mlast;
@@ -1424,7 +1492,7 @@ void handle_status(unsigned char *msg, char *sender, char *hostname, char *testn
 	if (modifyonly || issummary) {
 		/* Nothing */
 	}
-	else if ((flapcount > 0) && ((now - log->lastchange[flapcount-1]) < flapthreshold)) {
+	else if ((flapcount > 0) && ((now - log->lastchange[flapcount-1]) < flapthreshold) && (!isset_noflap(hinfo, testname, hostname))) {
 		if (!log->flapping) {
 			errprintf("Flapping detected for %s:%s - %d changes in %d seconds\n",
 				  hostname, testname, flapcount, (now - log->lastchange[flapcount-1]));
@@ -1501,7 +1569,7 @@ void handle_status(unsigned char *msg, char *sender, char *hostname, char *testn
 		}
 
 		if (log->acktime > now) {
-			/* Dont need to do anything about an acked test */
+			/* Don't need to do anything about an acked test */
 		}
 		else {
 			/* The acknowledge has expired. Clear the timestamp and the message buffer */
@@ -1705,7 +1773,7 @@ void handle_status(unsigned char *msg, char *sender, char *hostname, char *testn
 			 * That's for later - for now, we'll just give it a long enough 
 			 * lifetime so that cookies will be valid.
 			 */
-			log->cookieexpires = now + 86400; /* Valid for 1 day */
+			log->cookieexpires = now + defaultcookietime; /* 1 day by default */
 		}
 	}
 	else {
@@ -1722,7 +1790,7 @@ void handle_status(unsigned char *msg, char *sender, char *hostname, char *testn
 		log->histsynced = 1;
 
 		/*
-		 * Dont update the log->lastchange timestamp while DOWNTIME is active.
+		 * Don't update the log->lastchange timestamp while DOWNTIME is active.
 		 * (It is only seen as active if the color has been forced BLUE).
 		 */
 		if (!log->downtimeactive && (log->oldcolor != newcolor)) {
@@ -1872,7 +1940,7 @@ void handle_modify(char *msg, xymond_log_t *log, int color)
 		 *
 		 * We must determine the color based ONLY on the modifications that
 		 * have been reported.
-		 * The reason we dont include the original status color in the scan
+		 * The reason we don't include the original status color in the scan
 		 * is because the modifiers override the original status - and they
 		 * can make it both worse (green -> red) or better (red -> green).
 		 *
@@ -2173,7 +2241,7 @@ void handle_ackinfo(char *msg, char *sender, xymond_log_t *log)
 			newack = (ackinfo_t *)malloc(sizeof(ackinfo_t));
 		}
 		else {
-			/* Drop the old data so we dont leak memory */
+			/* Drop the old data so we don't leak memory */
 			dbgprintf("Dropping old ackinfo data: From %s, msg=%s\n", newack->ackedby, newack->msg);
 			if (newack->ackedby) xfree(newack->ackedby); 
 			if (newack->msg) xfree(newack->msg);
@@ -3695,7 +3763,7 @@ void do_message(conn_t *msg, char *origin)
 		}
 
 		/* 
-		 * We dont validate the ID, because "notes" may also send messages
+		 * We don't validate the ID, because "notes" may also send messages
 		 * for documenting pages or column-names. And the "usermsg" stuff can be
 		 * anything in the "ID" field. So we just insist that there IS an ID.
 		 */
@@ -5157,6 +5225,7 @@ int main(int argc, char *argv[])
 
 	defaultreddelay = xgetenv("DELAYRED"); if (defaultreddelay && (strlen(defaultreddelay) == 0)) defaultreddelay = NULL;
 	defaultyellowdelay = xgetenv("DELAYYELLOW"); if (defaultyellowdelay && (strlen(defaultyellowdelay) == 0)) defaultyellowdelay = NULL;
+	defaultcookietime = atoi(xgetenv("ACK_COOKIE_EXPIRATION"));
 
 	/* Load alert config */
 	alertcolors = colorset(xgetenv("ALERTCOLORS"), ((1 << COL_GREEN) | (1 << COL_BLUE)));

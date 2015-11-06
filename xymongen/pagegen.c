@@ -36,13 +36,14 @@ int  hostsbeforepages = 0;
 char *includecolumns = NULL;
 char *nongreenignorecolumns = "";
 int  nongreennodialups = 0;
-int  sort_grouponly_items = 0; /* Standard Xymon behaviour: Dont sort group-only items */
+int  sort_grouponly_items = 0; /* Standard Xymon behaviour: Don't sort group-only items */
 char *rssextension = ".rss"; /* Filename extension for generated RSS files */
 char *defaultpagetitle = NULL;
 int  pagetitlelinks = 0;
 int  pagetextheadings = 0;
 int  underlineheadings = 1;
 int  maxrowsbeforeheading = 0;
+int  showemptygroups = 1;
 int  nongreeneventlog = 1;
 int  nongreenacklog = 1;
 int  nongreeneventlogmaxcount = 100;
@@ -212,7 +213,7 @@ col_list_t *gen_column_list(host_t *hostlist, int pagetype, char *onlycols, char
 		/* Skip the dummy record */
 		collist_walk = head; head = head->next; xfree(collist_walk);
 
-		/* We're done - dont even look at the actual test data. */
+		/* We're done - don't even look at the actual test data. */
 		return (head);
 	}
 
@@ -443,6 +444,7 @@ void do_hosts(host_t *head, int sorthosts, char *onlycols, char *exceptcols, FIL
 	int	genstatic;
 	int	columncount;
 	char	*xymonskin, *infocolumngif, *trendscolumngif, *clientcolumngif;
+	char	*safegrouptitle;
 	int	rowcount = 0;
 	int     usetooltip = 0;
 
@@ -467,10 +469,14 @@ void do_hosts(host_t *head, int sorthosts, char *onlycols, char *exceptcols, FIL
 	else fprintf(output, "<A NAME=hosts-blk-%d>&nbsp;</A>\n\n", hostblkidx);
 	hostblkidx++;
 
+	if (!grouptitle) grouptitle = "";
+	safegrouptitle = stripnonwords(grouptitle);
+	if (*safegrouptitle != '\0') fprintf(output, "<A NAME=\"group-%s\"></A>\n\n", safegrouptitle);
+
 	groupcols = gen_column_list(head, pagetype, onlycols, exceptcols);
 	for (columncount=0, gc=groupcols; (gc); gc = gc->next, columncount++) ;
 
-	if (groupcols) {
+	if (showemptygroups || groupcols) {
 		int width;
 
 		width = atoi(xgetenv("DOTWIDTH"));
@@ -478,7 +484,7 @@ void do_hosts(host_t *head, int sorthosts, char *onlycols, char *exceptcols, FIL
 		width += 4;
 
 		/* Start the table ... */
-		fprintf(output, "<CENTER><TABLE SUMMARY=\"Group Block\" BORDER=0 CELLPADDING=2>\n");
+		fprintf(output, "<CENTER><TABLE SUMMARY=\"%s Group Block\" BORDER=0 CELLPADDING=2>\n", safegrouptitle);
 
 		/* Generate the host rows */
 		if (sorthosts) {
@@ -512,7 +518,7 @@ void do_hosts(host_t *head, int sorthosts, char *onlycols, char *exceptcols, FIL
 				fprintf(output, "<TR>");
 
 				fprintf(output, "<TD VALIGN=MIDDLE ROWSPAN=2><CENTER><FONT %s>%s</FONT></CENTER></TD>\n", 
-					xgetenv("XYMONPAGETITLE"), (strlen(grouptitle) ? grouptitle : "&nbsp;"));
+					xgetenv("XYMONPAGETITLE"), grouptitle);
 
 				for (gc=groupcols; (gc); gc = gc->next) {
 					fprintf(output, " <TD ALIGN=CENTER VALIGN=BOTTOM WIDTH=45>\n");
@@ -520,7 +526,8 @@ void do_hosts(host_t *head, int sorthosts, char *onlycols, char *exceptcols, FIL
 						columnlink(gc->column->name), 
 						xgetenv("XYMONPAGECOLFONT"), gc->column->name);
 				}
-				fprintf(output, "</TR> \n<TR><TD COLSPAN=%d><HR WIDTH=\"100%%\"></TD></TR>\n\n", columncount);
+				if (columncount) fprintf(output, "</TR>\n<TR><TD COLSPAN=%d><HR WIDTH=\"100%%\"></TD></TR>\n\n", columncount);
+				else fprintf(output, "</TR>\n<TR><TD></TD></TR>\n\n");
 			}
 
 			fprintf(output, "<TR class=line>\n <TD NOWRAP ALIGN=LEFT><A NAME=\"%s\">&nbsp;</A>\n", h->hostname);
@@ -584,9 +591,9 @@ void do_hosts(host_t *head, int sorthosts, char *onlycols, char *exceptcols, FIL
 					}
 					else if (genstatic && strcmp(e->column->name, xgetenv("INFOCOLUMN")) && strcmp(e->column->name, xgetenv("TRENDSCOLUMN")) && strcmp(e->column->name, xgetenv("CLIENTCOLUMN"))) {
 						/*
-						 * Dont use htmlextension here - it's for the
+						 * Don't use htmlextension here - it's for the
 						 * pages generated dynamically.
-						 * We dont do static pages for the info- and trends-columns, because
+						 * We don't do static pages for the info- and trends-columns, because
 						 * they are always generated dynamically.
 						 */
 						fprintf(output, "<A HREF=\"%s/html/%s.%s.html\">",
@@ -1088,7 +1095,7 @@ static void do_nongreenext(FILE *output, char *extenv, char *family)
 	p = strtok(extensions, "\t ");
 
 	while (p) {
-		/* Dont redo the eventlog or acklog things */
+		/* Don't redo the eventlog or acklog things */
 		if (strcmp(p, "eventlog.sh") == 0) {
 			if (nongreeneventlog && !havedoneeventlog) {
 				do_eventlog(output, nongreeneventlogmaxcount, nongreeneventlogmaxtime,
@@ -1142,14 +1149,14 @@ int do_nongreen_page(char *nssidebarfilename, int summarytype, char *filenamebas
 		int	useit = 0;
 
 		/*
-		 * Why dont we use the interesting_column() routine here ? 
+		 * Why don't we use the interesting_column() routine here ? 
 		 *
 		 * Well, because what we are interested in for now is
 		 * to determine if this HOST should be included on the page.
 		 *
-		 * We dont care if individual COLUMNS are included if the 
+		 * We don't care if individual COLUMNS are included if the 
 		 * host shows up - some columns are always included, e.g.
-		 * the info- and trends-columns, but we dont want that to
+		 * the info- and trends-columns, but we don't want that to
 		 * trigger a host being on the nongreen page!
 		 */
 		switch (summarytype) {
@@ -1277,7 +1284,7 @@ int do_nongreen_page(char *nssidebarfilename, int summarytype, char *filenamebas
 	if ((snapshot == 0) && (summarytype == PAGE_NONGREEN)) {
 		do_nongreenext(output, "XYMONNONGREENEXT", "mkbb");
 
-		/* Dont redo the eventlog or acklog things */
+		/* Don't redo the eventlog or acklog things */
 		if (nongreeneventlog && !havedoneeventlog) {
 			do_eventlog(output, nongreeneventlogmaxcount, nongreeneventlogmaxtime, 
 				    NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, nongreennodialups, 
