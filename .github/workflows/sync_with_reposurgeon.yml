@@ -1,0 +1,835 @@
+name: Sync Xymon SVN to GitHub via Reposurgeon
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *"
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out workflow
+        uses: actions/checkout@v4
+        with:
+          path: .github/workflows
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            subversion \
+            git \
+            golang-go \
+            ruby \
+            asciidoctor \
+            rsync \
+            gnuplot
+      - name: Clone & build reposurgeon
+        run: |
+          git clone https://gitlab.com/esr/reposurgeon.git
+          cd reposurgeon
+          make
+          sudo make install
+
+      - name: Migrate SVN to GitHub with Reposurgeon (Strict Myheart Style)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eux
+
+          PROJECT=xymon
+          svnrepo=https://svn.code.sf.net/p/xymon/code
+          mirror_path=/tmp/${PROJECT}-mirror
+          gitrepo=/tmp/${PROJECT}-git
+
+          cd /tmp
+
+          echo "Create local SVN mirror..."
+          svnadmin create "$mirror_path"
+          echo '#!/bin/sh' > "$mirror_path/hooks/pre-revprop-change"
+          echo 'exit 0' >> "$mirror_path/hooks/pre-revprop-change"
+          chmod +x "$mirror_path/hooks/pre-revprop-change"
+
+          echo "Syncing from SVN into local mirror..."
+          svnsync init "file://$mirror_path" "$svnrepo"
+          svnsync sync "file://$mirror_path"
+
+          echo "Start conversion..."
+          reposurgeon <<EOF
+          read $mirror_path
+          
+          # Delete Unbranched commit (readme4.2.1)
+          :18350 delete commit
+          :18352 delete commit
+          :18367 delete commit
+          :18368 delete commit
+          :18614 delete commit
+          :18615 delete commit
+          :18634 delete commit
+          :18673 delete commit
+          :18675 delete commit
+          :18747 delete commit
+          :18749 delete commit
+          :18754 delete commit
+          :18755 delete commit
+
+          # Delete tag -root
+          delete tag 4.2.0-root
+          delete tag 4.2.2-root
+          delete tag 4.2.3-root
+          delete tag 4.2.4-root
+          delete tag 4.3.0-root
+          delete tag 4.3.1-root
+          delete tag 4.3.2-root
+          delete tag 4.3.3-root
+          delete tag 4.3.4-root
+          delete tag 4.3.5-root
+          delete tag 4.3.6-root
+          delete tag 4.3.7-root
+          delete tag 4.3.8-root
+          delete tag 4.3.9-root
+          delete tag 4.3.10-root
+          delete tag 4.3.11-root
+          delete tag 4.3.12-root
+          delete tag 4.3.13-root
+          delete tag 4.3.14-root
+          delete tag 4.3.15-root
+          delete tag 4.3.16-root
+          delete tag 4.3.17-root
+          delete tag 4.3.18-root
+          delete tag 4.3.19-root
+          delete tag 4.3.20-root
+          delete tag 4.3.21-root
+          delete tag 4.3.22-root
+          delete tag 4.3.23-root
+          delete tag 4.3.24-root
+          delete tag 4.3.25-root
+          delete tag 4.3.26-root
+          delete tag 4.3.27-root
+          delete tag 4.3.28-root
+          delete tag 4.3.29-root
+          delete tag 4.3.31-root
+          delete tag 4.x-master-root
+          delete tag emptycommit-1917
+          delete tag emptycommit-3059
+          delete tag emptycommit-4385
+          delete tag emptycommit-5912
+          delete tag emptycommit-5920
+          delete tag emptycommit-5921
+          delete tag emptycommit-6253
+          delete tag emptycommit-6334
+          delete tag emptycommit-6336
+          delete tag emptycommit-6429
+          delete tag main-root
+          delete tag main-root
+          #-------------------------
+          rename branch refs/heads/4.3.30 refs/heads/main
+          rename branch refs/heads/4.x-master refs/heads/4.4.x
+          #-------------------------
+          delete reset refs/tags/rel_1_0
+          delete reset refs/tags/rel_1_1
+          delete reset refs/tags/rel_1_2
+          delete reset refs/tags/rel_1_3
+          delete reset refs/tags/rel_1_4
+          delete reset refs/tags/rel_1_5
+          delete reset refs/tags/rel_1_6
+          delete reset refs/tags/rel_1_7
+          delete reset refs/tags/rel_1_8
+          delete reset refs/tags/rel_1_9
+          delete reset refs/tags/rel_2_0
+          delete reset refs/tags/rel_2_1
+          delete reset refs/tags/rel_2_2
+          delete reset refs/tags/rel_2_3
+          delete reset refs/tags/rel_2_4
+          delete reset refs/tags/rel_2_5
+          delete reset refs/tags/rel_2_6
+          delete reset refs/tags/rel_2_7
+          delete reset refs/tags/rel_2_8
+          delete reset refs/tags/rel_4_0-beta5
+          delete reset refs/tags/rel_4_0-beta6
+          delete reset refs/tags/rel_4_0-RC1
+          delete reset refs/tags/rel_4_0-RC3
+          delete reset refs/tags/rel_4_0-RC4
+          delete reset refs/tags/rel_4_0-RC5
+          delete reset refs/tags/rel_4_0-RC6
+          delete reset refs/tags/rel_4_0
+          delete reset refs/tags/rel_4_0_1
+          delete reset refs/tags/rel_4_0_2
+          delete reset refs/tags/rel_4_1_2_rc1
+          delete reset refs/tags/rel_4_1_2
+          delete reset refs/tags/rel_4_2-alfa-20060404
+          delete reset refs/tags/rel_4_2-alfa-20060423
+          delete reset refs/tags/rel_4_2-RC-20060712
+          delete reset refs/tags/rel_4_2_0
+          delete reset refs/tags/rel_4_3_0-20061124
+          #-------------------------
+          :191 create tag 1.0.0
+          :247 create tag 1.1.0
+          :257 create tag 1.2.0
+          :295 create tag 1.3.0
+          :411 create tag 1.4.0
+          :417 create tag 1.5.0
+          :474 create tag 1.6.0
+          :521 create tag 1.7.0
+          :605 create tag 1.8.0
+          :636 create tag 1.9.0
+          :734 create tag 2.0.0
+          :921 create tag 2.1.0
+          :929 create tag 2.2.0
+          :999 create tag 2.3.0
+          :1175 create tag 2.4.0
+          :1486 create tag 2.5.0
+          :1858 create tag 2.6.0
+          :1892 create tag 2.7.0
+          :2085 create tag 2.8.0
+          :6441 create tag 4.0.0-beta.5
+          :6770 create tag 4.0.0-beta.6
+          :6925 create tag 4.0.0-rc.1
+          :7496 create tag 4.0.0-rc.3
+          :7668 create tag 4.0.0-rc.4
+          :7795 create tag 4.0.0-rc.5
+          :8191 create tag 4.0.0-rc.6
+          :8504 create tag 4.0.0
+          :8515 create tag 4.0.1
+          :8767 create tag 4.0.2
+          :11068 create tag 4.1.2-rc.1
+          :11206 create tag 4.1.2
+          :12382 create tag 4.2.0-alpha.20060404
+          :12790 create tag 4.2.0-alpha.20060423
+          :14533 create tag 4.2.0-rc.20060712
+          #:15005 create tag 4.2.0
+          :15236 create tag 4.3.0-20061124
+          #-------------------------
+          delete branch refs/tags/rel_2_9
+          delete branch refs/tags/rel_2_10
+          delete branch refs/tags/rel_2_11
+          delete branch refs/tags/with_ares
+          delete branch refs/tags/rel_2_12
+          delete branch refs/tags/rel_2_13
+          delete branch refs/tags/rel_2_14
+          delete branch refs/tags/rel_2_15
+          delete branch refs/tags/rel_2_16
+          delete branch refs/tags/rel_3_0
+          delete branch refs/tags/rel_3_1
+          delete branch refs/tags/rel_3_2
+          delete branch refs/tags/rel_3_3
+          delete branch refs/tags/rel_3_4
+          delete branch refs/tags/rel_4_0beta4
+          delete branch refs/tags/Zoom_1
+          delete branch refs/tags/rel_4_0-RC2
+          delete branch refs/tags/rel_4_0_3rc2
+          delete branch refs/tags/rel_4_0_3
+          delete branch refs/tags/rel_4_0_4
+          delete branch refs/tags/rel_4_0_5RC1
+          delete branch refs/tags/rel_4_1_0
+          delete branch refs/tags/rel_4_1_1
+          delete branch refs/tags/before_statusreports
+          delete branch refs/tags/rel_4_0-20041201
+          delete branch refs/tags/rel_4_0-beta2
+          delete branch refs/tags/rel_4_0-beta3
+          delete branch refs/tags/rel_4_2-beta-20060605
+          # Same but Commit Decremented by 1
+          :2431 create tag 2.9.0
+          :2650 create tag 2.10.0
+          :2684 create tag 2.11.0
+          :2757 create tag 2.11.0-with-ares
+          :2786 create tag 2.12.0
+          :2880 create tag 2.13.0
+          :2991 create tag 2.14.0
+          :3042 create tag 2.15.0
+          :3322 create tag 2.16.0
+          :3614 create tag 3.0.0
+          :3782 create tag 3.1.0
+          :3831 create tag 3.2.0
+          :4319 create tag 3.3.0
+          :5043 create tag 3.4.0
+          :6167 create tag 4.0.0-beta.4
+          :7142 create tag 4.0.0-zoom.1
+          :7189 create tag 4.0.0-rc.2
+          :9299 create tag 4.0.3-rc.2
+          :9424 create tag 4.0.3
+          :9570 create tag 4.0.4
+          :10006 create tag 4.0.5-rc.1
+          :10421 create tag 4.1.0
+          :10496 create tag 4.1.1
+          :5055 create tag 4.0.0-before-statusreports
+          :5159 create tag 4.0.0-20041201
+          :5292 create tag 4.0.0-beta.2
+          :5393 create tag 4.0.0-beta.3
+          :14452 create tag 4.2.0-beta.20060605
+          #-------------------------
+          Delete branch
+          delete branch refs/heads/4.2.0
+          delete branch refs/heads/4.2.2
+          delete branch refs/heads/4.2.3
+          delete branch refs/heads/4.3.0
+          delete branch refs/heads/4.2.4
+          delete branch refs/heads/4.3.31
+          delete branch refs/heads/sandbox
+          #-------------------------
+          :15005 create tag 4.2.0
+          delete branch refs/heads/4.3.1
+          :26313 create tag 4.3.1
+          delete branch refs/heads/4.3.2
+          :26461  create tag 4.3.2
+          delete branch refs/heads/4.3.3
+          :26633 create tag 4.3.3
+          delete branch refs/heads/4.3.4
+          :27163 create tag 4.3.4
+          delete branch refs/heads/4.3.5
+          :27458 create tag 4.3.5
+          delete branch refs/heads/4.3.6
+          :27701 create tag 4.3.6
+
+          #-------------------------
+          #list index | grep main | grep commit | head -n 1
+          #list index | grep 4.3.29 | grep commit | tail -1
+          :37034,:37039 reparent
+          delete branch refs/heads/4.3.29
+          :37034 create tag 4.3.29
+          #lint
+
+          :36584,:36604 reparent
+          delete branch refs/heads/4.3.28
+          :36584 create tag 4.3.28
+
+          :35985,:36006 reparent
+          delete branch refs/heads/4.3.27
+          :35985 create tag 4.3.27
+
+          :35649,:35809 reparent
+          delete branch refs/heads/4.3.26
+          :35649 create tag 4.3.26
+
+          :35424,:35479 reparent
+          delete branch refs/heads/4.3.25
+          :35424 create tag 4.3.25
+
+          :34680,:34815 reparent
+          delete branch refs/heads/4.3.24
+          :34680 create tag 4.3.24
+
+          :34206,:34389 reparent
+          delete branch refs/heads/4.3.23
+          :34206 create tag 4.3.23
+
+          :33920,:34010 reparent
+          delete branch refs/heads/4.3.22
+          :33920 create tag 4.3.22
+
+          :33255,:33920 reparent
+          delete branch refs/heads/4.3.21
+          :33255 create tag 4.3.21
+
+          :33100,:33255 reparent
+          delete branch refs/heads/4.3.20
+          :33100 create tag 4.3.20
+
+          :32677,:32948 reparent
+          delete branch refs/heads/4.3.19
+          :32677 create tag 4.3.19
+          #-------------------------
+          :31832 delete commit
+          :31838 delete commit
+          :31843 delete commit
+          :31847 delete commit
+          :31850 delete commit
+          :31854 delete commit
+          :31859 delete commit
+          :31861 delete commit
+          :31857 delete commit
+          :31681 delete commit
+          :31679 delete commit
+          :31670 delete commit
+          :31667 delete commit
+          :31665 delete commit
+          :31653 delete commit
+          :31648 delete commit
+          :31644 delete commit
+          :31640 delete commit
+          :31638 delete commit
+          :31626 delete commit
+          :31618 delete commit
+          :31616 delete commit
+          :31614 delete commit
+          :31611 delete commit
+          :31606 delete commit
+          :31603 delete commit
+          :31600 delete commit
+          :31598 delete commit
+          :31594 delete commit
+          :31593 delete commit
+          :31592 delete commit
+          :31591 delete commit
+          :31589 delete commit
+          :31587 delete commit
+          :31585 delete commit
+          :31583 delete commit
+          :31579 delete commit
+          :31578 delete commit
+          :31576 delete commit
+          :31574 delete commit
+          :31571 delete commit
+          :31569 delete commit
+          :31567 delete commit
+          :31566 delete commit
+          :31563 delete commit
+          :31561 delete commit
+          :31556 delete commit
+          :31005 delete commit
+          :30989 delete commit
+          :30986 delete commit
+          :30979 delete commit
+          :30976 delete commit
+          :30975 delete commit
+          :30962 delete commit
+          :30951 delete commit
+          :30948 delete commit
+          :30941 delete commit
+          :30939 delete commit
+          :30771 delete commit
+          :30769 delete commit
+          :30758 delete commit
+          :30756 delete commit
+          :30754 delete commit
+          :30747 delete commit
+          :30745 delete commit
+          :30743 delete commit
+          :30737 delete commit
+          :30729 delete commit
+          :30720 delete commit
+          :30716 delete commit
+          :30712 delete commit
+          :30708 delete commit
+          :30706 delete commit
+          :30704 delete commit
+          :30701 delete commit
+          :30699 delete commit
+          :30697 delete commit
+          :30694 delete commit
+          :30692 delete commit
+          :30688 delete commit
+          :30686 delete commit
+          :30684 delete commit
+          :30682 delete commit
+          :30673 delete commit
+          :30660 delete commit
+          :30658 delete commit
+          :30654 delete commit
+          :30652 delete commit
+          :30646 delete commit
+          :30644 delete commit
+          :30642 delete commit
+          :30640 delete commit
+          :30637 delete commit
+          :30633 delete commit
+          :30630 delete commit
+          :30623 delete commit
+          :30621 delete commit
+          :30619 delete commit
+          :30617 delete commit
+          :30615 delete commit
+          :30613 delete commit
+          :30611 delete commit
+          :30609 delete commit
+          :30605 delete commit
+          :30603 delete commit
+          :30593 delete commit
+          :30591 delete commit
+          :30583 delete commit
+          :30567 delete commit
+          :30556 delete commit
+          :30554 delete commit
+          :30552 delete commit
+          :30548 delete commit
+          :30542 delete commit
+          :30540 delete commit
+          :30537 delete commit
+          :30531 delete commit
+          :30529 delete commit
+          :30527 delete commit
+          :30525 delete commit
+          :30523 delete commit
+          :30518 delete commit
+          :30505 delete commit
+          :30503 delete commit
+          :30501 delete commit
+          :30499 delete commit
+          :30495 delete commit
+          :30449 delete commit
+          :30298 delete commit
+          :30295 delete commit
+          :30287 delete commit
+          :30243 delete commit
+          :30239 delete commit
+          :30238 delete commit
+          :30225 delete commit
+          :30219 delete commit
+          :30217 delete commit
+          :30213 delete commit
+          :30036 delete commit
+          :30013 delete commit
+          :29781 delete commit
+          :29777 delete commit
+          :29761 delete commit
+          :29743 delete commit
+          :29742 delete commit
+          :29739 delete commit
+          :29738 delete commit
+          :29731 delete commit
+          :29729 delete commit
+          :29728 delete commit
+          :29725 delete commit
+          :29681 delete commit
+          :29499 delete commit
+          :29492 delete commit
+          :29485 delete commit
+          :29484 delete commit
+          :29483 delete commit
+          :29480 delete commit
+          :29473 delete commit
+          :29440 delete commit
+          :29432 delete commit
+          :29428 delete commit
+          :29423 delete commit
+          :29419 delete commit
+          :29417 delete commit
+          :29413 delete commit
+          :29410 delete commit
+          :29405 delete commit
+          :29376 delete commit
+          :29180 delete commit
+          :29176 delete commit
+          :29166 delete commit
+          :29165 delete commit
+          :29159 delete commit
+          :29076 delete commit
+          :29073 delete commit
+          :28918 delete commit
+          :28914 delete commit
+          :28849 delete commit
+          :28847 delete commit
+          :28845 delete commit
+          :28843 delete commit
+          :28808 delete commit
+          :28806 delete commit
+          :28804 delete commit
+          :28802 delete commit
+          :28798 delete commit
+          :28792 delete commit
+          :28787 delete commit
+          :28728 delete commit
+          :28722 delete commit
+          :28712 delete commit
+          :28708 delete commit
+          :28706 delete commit
+          :28704 delete commit
+          :28700 delete commit
+          :28697 delete commit
+          :28693 delete commit
+          :28691 delete commit
+          :28689 delete commit
+          :28687 delete commit
+          :28685 delete commit
+          :28683 delete commit
+          :28680 delete commit
+          :28678 delete commit
+          :28670 delete commit
+          :28664 delete commit
+          :28662 delete commit
+          :28658 delete commit
+          :28653 delete commit
+          :28649 delete commit
+          :28647 delete commit
+          :28643 delete commit
+          :28640 delete commit
+          :28636 delete commit
+          :28634 delete commit
+          :28629 delete commit
+          :28622 delete commit
+          :28614 delete commit
+          :28612 delete commit
+          :28609 delete commit
+          :28603 delete commit
+          :28601 delete commit
+          :28599 delete commit
+          :28596 delete commit
+          :28594 delete commit
+          :28592 delete commit
+          :28588 delete commit
+          :28579 delete commit
+          :28577 delete commit
+          :28572 delete commit
+          :28570 delete commit
+          :28567 delete commit
+          :28565 delete commit
+          :28563 delete commit
+          :28561 delete commit
+          :28540 delete commit
+          :28537 delete commit
+          :28535 delete commit
+          :28533 delete commit
+          :28531 delete commit
+          :28529 delete commit
+          :28527 delete commit
+          :28525 delete commit
+          :28523 delete commit
+          :28517 delete commit
+          :28513 delete commit
+          :28511 delete commit
+          :28497 delete commit
+          :28495 delete commit
+          :28493 delete commit
+          :28491 delete commit
+          :28461 delete commit
+          :28459 delete commit
+          :28451 delete commit
+          :28444 delete commit
+          :28431 delete commit
+          :28429 delete commit
+          :28425 delete commit
+          :28422 delete commit
+          :28408 delete commit
+          :28400 delete commit
+          :28398 delete commit
+          :28396 delete commit
+          :28394 delete commit
+          :28392 delete commit
+          :28390 delete commit
+          :28388 delete commit
+          :28386 delete commit
+          :28385 delete commit
+          :28383 delete commit
+          :28381 delete commit
+          :28378 delete commit
+          :28376 delete commit
+          :28374 delete commit
+          :28371 delete commit
+          :28369 delete commit
+          :28367 delete commit
+          :28365 delete commit
+          :28305 delete commit
+          :28294 delete commit
+          :28291 delete commit
+          :28285 delete commit
+          :28277 delete commit
+          :28275 delete commit
+          :28273 delete commit
+          :28271 delete commit
+          :28257 delete commit
+          :28253 delete commit
+          :28251 delete commit
+          :28248 delete commit
+          :28246 delete commit
+          :28239 delete commit
+          :28184 delete commit
+          :28182 delete commit
+          :28178 delete commit
+          :28175 delete commit
+          :28173 delete commit
+          :28171 delete commit
+          :28169 delete commit
+          :28167 delete commit
+          :28165 delete commit
+          :28163 delete commit
+          :28161 delete commit
+          :28159 delete commit
+          :28157 delete commit
+          :28144 delete commit
+          :28142 delete commit
+          :28140 delete commit
+          :28138 delete commit
+          :28136 delete commit
+          :28133 delete commit
+          :28131 delete commit
+          :28129 delete commit
+          :28123 delete commit
+          :28121 delete commit
+          :28119 delete commit
+          :28116 delete commit
+          :28114 delete commit
+          :28112 delete commit
+          :28109 delete commit
+          :28105 delete commit
+          :28103 delete commit
+          :28101 delete commit
+          :28099 delete commit
+          :28097 delete commit
+          :28095 delete commit
+          :28093 delete commit
+          :28091 delete commit
+          :28089 delete commit
+          :28087 delete commit
+          :28081 delete commit
+          :28076 delete commit
+          :28072 delete commit
+          :28069 delete commit
+          :28067 delete commit
+          :28060 delete commit
+          :28052 delete commit
+          :28050 delete commit
+          :28045 delete commit
+          :28043 delete commit
+          :28037 delete commit
+          :28035 delete commit
+          :28030 delete commit
+          :28024 delete commit
+          :28021 delete commit
+          :28018 delete commit
+          :28007 delete commit
+          :28005 delete commit
+          :28003 delete commit
+          :28000 delete commit
+          :27998 delete commit
+          :27996 delete commit
+          :27992 delete commit
+          :27990 delete commit
+          :27987 delete commit
+          :27984 delete commit
+          :27981 delete commit
+          :27976 delete commit
+          :27974 delete commit
+          :27971 delete commit
+          :27969 delete commit
+          :27967 delete commit
+          :27965 delete commit
+          :27960 delete commit
+          :27958 delete commit
+          :27944 delete commit
+          :27940 delete commit
+          :27938 delete commit
+          :27935 delete commit
+          :27933 delete commit
+          :27931 delete commit
+          :27929 delete commit
+          :27912 delete commit
+          :27910 delete commit
+          :27908 delete commit
+          :27905 delete commit
+          :27897 delete commit
+          :27875 delete commit
+          :27873 delete commit
+
+          ---------------
+
+          :32213,:32215 reparent
+          delete branch refs/heads/4.3.18
+          :32213 create tag 4.3.18
+
+          :31827,:31829 reparent
+          delete branch refs/heads/4.3.17
+          :31827 create tag 4.3.17
+
+          :31553,:31619 reparent
+          delete branch refs/heads/4.3.16
+          :31553 create tag 4.3.16
+
+          :31384,:31386 reparent
+          delete branch refs/heads/4.3.15
+          :31384 create tag 4.3.15
+
+          :31233,:31235 reparent
+          delete branch refs/heads/4.3.14
+          :31233 create tag 4.3.14
+
+          :30983,:30985 reparent
+          delete branch refs/heads/4.3.13
+          :30983 create tag 4.3.13
+
+          :30443,:30447 reparent
+          delete branch refs/heads/4.3.12
+          :30443 create tag 4.3.12
+
+          :30210,:30227 reparent
+          delete branch refs/heads/4.3.11
+          :30210 create tag 4.3.11
+
+          :30006,:30014 reparent
+          delete branch refs/heads/4.3.10
+          :30006 create tag 4.3.10
+
+          :29663,:29665 reparent
+          delete branch refs/heads/4.3.9
+          :29663 create tag 4.3.9
+
+          :29330,:29332 reparent
+          delete branch refs/heads/4.3.8
+          :29330 create tag 4.3.8
+
+          :28281,:28851 reparent
+          delete branch refs/heads/4.3.7
+          :28281 create tag 4.3.7
+
+          :27871,:28255 reparent
+          delete branch refs/heads/master
+          delete branch refs/heads/master
+
+        
+          prefer git
+          rebuild $gitrepo
+          EOF
+          echo "...finished"
+
+          echo "Restoring correct .gitignore at root..."
+          cd "$gitrepo"
+          git config user.name "Xymon SVN Import"
+          git config user.email "svn-import@users.noreply.github.com"
+
+          cat > .gitignore <<EOG
+          /Makefile
+          EOG
+          git add .gitignore
+          git commit -m "Add root-level .gitignore to ignore Makefile only"
+
+          export FILTER_BRANCH_SQUELCH_WARNING=1
+          git filter-branch --force \
+            --prune-empty \
+            --tag-name-filter cat -- --all
+
+          echo "Preserving GitHub workflows..."
+          mkdir -p /tmp/workflows-temp
+          cd /tmp/workflows-temp
+          git init
+          git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/xymon-monitoring/sourceforge-mirror.git
+          git fetch origin main --depth=1
+          git checkout FETCH_HEAD
+
+          mkdir -p "$gitrepo/.github/workflows"
+          cp -r .github/workflows/* "$gitrepo/.github/workflows/" || true
+
+          cd "$gitrepo"
+          git add .github/workflows
+          git commit -m "Preserve GitHub Actions workflows before force push" || true
+
+          echo "Force pushing all branches and tags to GitHub..."
+          git branch -M main
+          git remote add origin https://x-access-token:${GITHUB_TOKEN}@github.com/xymon-monitoring/sourceforge-mirror.git
+          git push --force --all origin
+          git push --force --tags origin
+
+          echo "Cleaning up remote branches not in local repo..."
+          local_branches=$(git for-each-ref --format='%(refname:short)' refs/heads/)
+          remote_branches=$(git ls-remote --heads origin | awk '{print $2}' | sed 's|refs/heads/||')
+          remote_tags=$(git ls-remote --tags origin | awk '{print $2}' | sed 's|refs/tags/||')
+
+          # Delete orphaned remote branches
+          for remote_branch in $remote_branches; do
+            if ! echo "$local_branches" | grep -q "^$remote_branch$"; then
+              echo "Deleting orphaned remote branch: $remote_branch"
+              git push origin --delete "$remote_branch"
+            fi
+          done
+
+          # Delete orphaned remote tags
+          for remote_tag in $remote_tags; do
+            if ! git show-ref --tags | grep -q "$remote_tag"; then
+              echo "Deleting orphaned remote tag: $remote_tag"
+              git push origin --delete "refs/tags/$remote_tag"
+            fi
+          done
+          
